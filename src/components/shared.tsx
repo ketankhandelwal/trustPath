@@ -23,7 +23,7 @@ interface SidebarProps {
   role: 'admin' | 'doctor';
   current: string;
   onNavigate: (page: string) => void;
-  counts?: { doctors?: number; reports?: number; referrals?: number };
+  counts?: { doctors?: number; reports?: number };
   user?: { name: string; email: string; initials: string };
 }
 export function Sidebar({ role, current, onNavigate, counts = {}, user }: SidebarProps) {
@@ -33,7 +33,6 @@ export function Sidebar({ role, current, onNavigate, counts = {}, user }: Sideba
     { section: 'Manage' },
     { id: 'doctors', label: 'Doctors', icon: 'doctors', count: counts.doctors },
     { id: 'reports', label: 'Reports', icon: 'reports', count: counts.reports },
-    { id: 'referrals', label: 'Referrals', icon: 'referrals', count: counts.referrals },
     { section: 'Account' },
     { id: 'settings', label: 'Settings', icon: 'settings' },
   ];

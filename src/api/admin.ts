@@ -12,8 +12,8 @@ export const createDoctor = (data: Record<string, unknown>) =>
 export const updateDoctor = (id: string, data: Record<string, unknown>) =>
   client.put(`/api/admin/doctors/${id}`, data);
 
-export const toggleDoctorStatus = (id: string) =>
-  client.patch(`/api/admin/doctors/${id}/status`);
+export const toggleDoctorStatus = (id: string, isActive: boolean) =>
+  client.patch(`/api/admin/doctors/${id}/status`, { is_active: isActive });
 
 // Reports
 export const listReports = (params?: Record<string, unknown>) =>

@@ -10,7 +10,6 @@ import DoctorLogin from './pages/DoctorLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminDoctors from './pages/admin/AdminDoctors';
 import AdminReports from './pages/admin/AdminReports';
-import AdminReferrals from './pages/admin/AdminReferrals';
 import AdminSettings from './pages/admin/AdminSettings';
 import DoctorDashboard from './pages/doctor/DoctorDashboard';
 import DoctorRefer from './pages/doctor/DoctorRefer';
@@ -18,7 +17,7 @@ import DoctorReports from './pages/doctor/DoctorReports';
 import DoctorSettings from './pages/doctor/DoctorSettings';
 
 type Role = 'admin' | 'doctor' | null;
-type AdminPage = 'dashboard' | 'doctors' | 'reports' | 'referrals' | 'settings';
+type AdminPage = 'dashboard' | 'doctors' | 'reports' | 'settings';
 type DoctorPage = 'dashboard' | 'refer' | 'reports' | 'settings';
 
 export default function App() {
@@ -32,8 +31,8 @@ export default function App() {
 function AppInner() {
   const [role, setRole] = useState<Role>(() => (localStorage.getItem('role') as Role) || null);
   const [user, setUser] = useState<{ name: string; email: string; initials: string } | undefined>();
-  const [adminPage, setAdminPage] = useState<AdminPage>('dashboard');
-  const [doctorPage, setDoctorPage] = useState<DoctorPage>('dashboard');
+  const [adminPage, setAdminPage] = useState<AdminPage>(() => (localStorage.getItem('adminPage') as AdminPage) || 'dashboard');
+  const [doctorPage, setDoctorPage] = useState<DoctorPage>(() => (localStorage.getItem('doctorPage') as DoctorPage) || 'dashboard');
   const [pageOpts, setPageOpts] = useState<Record<string, unknown>>({});
 
   useEffect(() => {
@@ -52,11 +51,13 @@ function AppInner() {
 
   const navigateAdmin = (page: string, opts: Record<string, unknown> = {}) => {
     setAdminPage(page as AdminPage);
+    localStorage.setItem('adminPage', page);
     setPageOpts(opts);
   };
 
   const navigateDoctor = (page: string) => {
     setDoctorPage(page as DoctorPage);
+    localStorage.setItem('doctorPage', page);
   };
 
   const handleLogout = () => {
@@ -64,6 +65,8 @@ function AppInner() {
     setUser(undefined);
     setAdminPage('dashboard');
     setDoctorPage('dashboard');
+    localStorage.removeItem('adminPage');
+    localStorage.removeItem('doctorPage');
   };
 
   if (!role) {
@@ -80,7 +83,6 @@ function AppInner() {
             {adminPage === 'dashboard' && <AdminDashboard onNavigate={navigateAdmin}/>}
             {adminPage === 'doctors' && <AdminDoctors openAddOnMount={!!pageOpts.openAdd}/>}
             {adminPage === 'reports' && <AdminReports openUploadOnMount={!!pageOpts.openUpload}/>}
-            {adminPage === 'referrals' && <AdminReferrals/>}
             {adminPage === 'settings' && <AdminSettings onLogout={handleLogout} user={user}/>}
           </div>
         </div>
@@ -105,7 +107,7 @@ function AppInner() {
 }
 
 function adminPageTitle(page: AdminPage) {
-  const m: Record<AdminPage, string> = { dashboard: 'Dashboard', doctors: 'Doctors', reports: 'Reports', referrals: 'Referrals', settings: 'Settings' };
+  const m: Record<AdminPage, string> = { dashboard: 'Dashboard', doctors: 'Doctors', reports: 'Reports', settings: 'Settings' };
   return m[page];
 }
 

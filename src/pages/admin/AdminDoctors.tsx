@@ -58,9 +58,9 @@ export default function AdminDoctors({ openAddOnMount, onOpenDoctor }: { openAdd
     setEditing(null);
   };
 
-  const handleToggle = async (id: unknown) => {
+  const handleToggle = async (id: unknown, currentIsActive: boolean) => {
     try {
-      await toggleDoctorStatus(String(id));
+      await toggleDoctorStatus(String(id), !currentIsActive);
       toast('Doctor status updated');
       load();
     } catch { toast('Failed to update status'); }
@@ -149,7 +149,7 @@ export default function AdminDoctors({ openAddOnMount, onOpenDoctor }: { openAdd
                   <td>
                     <RowMenu items={[
                       { label: 'Edit details', icon: 'edit', action: () => setEditing(d) },
-                      { label: getStatusLabel(d) === 'Active' ? 'Deactivate' : 'Activate', icon: getStatusLabel(d) === 'Active' ? 'close' : 'check', action: () => handleToggle(d.id) },
+                      { label: getStatusLabel(d) === 'Active' ? 'Deactivate' : 'Activate', icon: getStatusLabel(d) === 'Active' ? 'close' : 'check', action: () => handleToggle(d.id, !!d.is_active) },
                     ]}/>
                   </td>
                 </tr>

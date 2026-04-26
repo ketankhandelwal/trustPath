@@ -9,6 +9,9 @@ const PANELS = ['Complete Blood Count','Liver Function Panel','Kidney Function P
 
 type Report = Record<string, unknown>;
 
+const referredByLabel = (r: Report) =>
+  r.referred_by_self ? 'Self' : String(r.doctor_name || r.referred_by_doctor_name || '—');
+
 export default function AdminReports({ openUploadOnMount }: { openUploadOnMount?: boolean }) {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,8 +48,16 @@ export default function AdminReports({ openUploadOnMount }: { openUploadOnMount?
 
   const handleSave = async (data: Report, file?: File | null) => {
     const fd = new FormData();
-    Object.entries(data).forEach(([k, v]) => { if (v != null && v !== '') fd.append(k, String(v)); });
-    if (!data.referred_by) fd.append('referred_by', 'Self');
+    const skip = new Set(['referred_by', '_referred_label', 'referred_by_self', 'referred_by_doctor_id', 'doctor_name']);
+    Object.entries(data).forEach(([k, v]) => {
+      if (!skip.has(k) && v != null && v !== '') fd.append(k, String(v));
+    });
+    if (data.referred_by_doctor_id) {
+      fd.append('referred_by_doctor_id', String(data.referred_by_doctor_id));
+      fd.append('referred_by_self', 'false');
+    } else {
+      fd.append('referred_by_self', 'true');
+    }
     if (!data.report_name) fd.append('report_name', file?.name || String(data.investigation || data.panel || 'Report'));
     if (file) fd.append('file', file);
     try {
@@ -137,13 +148,13 @@ export default function AdminReports({ openUploadOnMount }: { openUploadOnMount?
                 <tr key={String(r.id)}>
                   <td>
                     <button onClick={() => setPreview(r)} className="col" style={{ lineHeight: 1.25, textAlign: 'left' }}>
-                      <span style={{ fontWeight: 500 }}>{String(r.name || r.patient_name || '—')}</span>
+                      <span style={{ fontWeight: 500 }}>{String(r.report_name || r.patient_name || '—')}</span>
                       <span className="text-xs text-dim mono">{String(r.reg_no || r.regNo || '')}</span>
                     </button>
                   </td>
                   <td>{String(r.patient_name || r.patient || '—')} <span className="text-dim">{String(r.age || '')}/{String(r.sex || '')}</span></td>
                   <td>{String(r.investigation || r.panel || '—')}</td>
-                  <td className="text-muted">{String(r.referred_by || r.referredBy || '—')}</td>
+                  <td className="text-muted">{referredByLabel(r)}</td>
                   <td className="mono text-muted">{String((r.sample_date || r.sampleDate || '').toString().slice(0,10))}</td>
                   <td><StatusChip status={getStatusLabel(String(r.status || ''))}/></td>
                   <td>
@@ -175,12 +186,23 @@ export default function AdminReports({ openUploadOnMount }: { openUploadOnMount?
 function UploadReportModal({ onClose, onSave }: { onClose: () => void; onSave: (d: Report, file: File | null) => void }) {
   const [step, setStep] = useState(1);
   const [file, setFile] = useState<File | null>(null);
-  const [f, setF] = useState<Report>({ patient_name: '', age: '', sex: 'male', referred_by: 'Self', investigation: INVESTIGATIONS[0], panel: PANELS[0], status: 'in_progress', sample_date: new Date().toISOString().slice(0,10), reg_no: '', lab_no: '' });
+  const [f, setF] = useState<Report>({
+    patient_name: '', age: '', sex: 'male',
+    referred_by_doctor_id: null, referred_by_self: true, _referred_label: 'Self',
+    investigation: INVESTIGATIONS[0], panel: PANELS[0], status: 'in_progress',
+    sample_date: new Date().toISOString().slice(0,10), reg_no: '', lab_no: '',
+  });
   const set = (k: string, v: unknown) => setF(x => ({ ...x, [k]: v }));
   const fileRef = useRef<HTMLInputElement>(null);
 
   const steps = [{n:1,label:'Upload file'},{n:2,label:'Patient details'},{n:3,label:'Report details'},{n:4,label:'Review & save'}];
   const canNext = () => { if (step === 1) return !!file; if (step === 2) return !!(f.patient_name && f.age); if (step === 3) return !!f.investigation; return true; };
+
+  const handleReferredSelect = (label: string, doctorId: string | null) => {
+    set('_referred_label', label);
+    set('referred_by_doctor_id', doctorId);
+    set('referred_by_self', !doctorId);
+  };
 
   return (
     <Modal title="Upload Report" size="xl" icon="upload" onClose={onClose}
@@ -240,7 +262,7 @@ function UploadReportModal({ onClose, onSave }: { onClose: () => void; onSave: (
           <div><label className="field-label">Sex</label><select className="select" value={String(f.sex || 'male')} onChange={e => set('sex', e.target.value)}><option value="male">M</option><option value="female">F</option><option value="other">Other</option></select></div>
           <div style={{ gridColumn: '1 / -1' }}>
             <label className="field-label">Referred by</label>
-            <ReferredByInput value={String(f.referred_by || '')} onChange={v => set('referred_by', v)}/>
+            <ReferredByInput label={String(f._referred_label || 'Self')} onSelect={handleReferredSelect}/>
           </div>
         </div>
       )}
@@ -269,7 +291,7 @@ function UploadReportModal({ onClose, onSave }: { onClose: () => void; onSave: (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
             {[
               ['Patient', `${f.patient_name || '—'} · ${f.age}/${f.sex}`],
-              ['Referred by', f.referred_by || 'Self'],
+              ['Referred by', f._referred_label || 'Self'],
               ['Registration', f.reg_no || '(auto)'],
               ['Investigation', f.investigation],
               ['Panel', f.panel],
@@ -288,16 +310,30 @@ function UploadReportModal({ onClose, onSave }: { onClose: () => void; onSave: (
 }
 
 function EditReportModal({ report, onClose, onSave }: { report: Report; onClose: () => void; onSave: (d: Report, file: null) => void }) {
-  const [f, setF] = useState<Report>(report);
+  const [f, setF] = useState<Report>({
+    ...report,
+    _referred_label: report.referred_by_self ? 'Self' : String(report.doctor_name || ''),
+  });
   const set = (k: string, v: unknown) => setF(x => ({ ...x, [k]: v }));
+
+  const handleReferredSelect = (label: string, doctorId: string | null) => {
+    set('_referred_label', label);
+    set('referred_by_doctor_id', doctorId);
+    set('referred_by_self', !doctorId);
+  };
+
   return (
-    <Modal title={`Edit · ${String(report.reg_no || report.regNo || '')}`} subtitle={String(report.name || '')} size="lg" icon="edit" onClose={onClose}
+    <Modal title={`Edit · ${String(report.reg_no || report.regNo || '')}`} subtitle={String(report.report_name || report.patient_name || '')} size="lg" icon="edit" onClose={onClose}
       footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={() => onSave(f, null)}>Save changes</button></>}
     >
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <div style={{ gridColumn: '1 / -1' }}><label className="field-label">Patient name</label><input className="input" value={String(f.patient_name || f.patient || '')} onChange={e => set('patient_name', e.target.value)}/></div>
         <div><label className="field-label">Age</label><input className="input" value={String(f.age || '')} onChange={e => set('age', e.target.value)}/></div>
-        <div><label className="field-label">Sex</label><select className="select" value={String(f.sex || 'M')} onChange={e => set('sex', e.target.value)}><option>M</option><option>F</option></select></div>
+        <div><label className="field-label">Sex</label><select className="select" value={String(f.sex || 'male')} onChange={e => set('sex', e.target.value)}><option value="male">M</option><option value="female">F</option><option value="other">Other</option></select></div>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <label className="field-label">Referred by</label>
+          <ReferredByInput label={String(f._referred_label || 'Self')} onSelect={handleReferredSelect}/>
+        </div>
         <div><label className="field-label">Sample date</label><input className="input" type="date" value={String(f.sample_date || f.sampleDate || '')} onChange={e => set('sample_date', e.target.value)}/></div>
         <div><label className="field-label">Investigation</label><select className="select" value={String(f.investigation || '')} onChange={e => set('investigation', e.target.value)}>{INVESTIGATIONS.map(i => <option key={i}>{i}</option>)}</select></div>
         <div style={{ gridColumn: '1 / -1' }}>
@@ -315,10 +351,13 @@ function EditReportModal({ report, onClose, onSave }: { report: Report; onClose:
   );
 }
 
-function ReferredByInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [doctors, setDoctors] = useState<{ id: string; name: string }[]>([]);
+function ReferredByInput({ label, onSelect }: { label: string; onSelect: (label: string, doctorId: string | null) => void }) {
+  const [doctors, setDoctors] = useState<{ id: string; name: string; hospital?: string }[]>([]);
+  const [inputVal, setInputVal] = useState(label);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setInputVal(label); }, [label]);
 
   useEffect(() => {
     listDoctors({ is_active: true, page: 1, limit: 500, sort_by: 'name' })
@@ -335,18 +374,17 @@ function ReferredByInput({ value, onChange }: { value: string; onChange: (v: str
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const filtered = [{ id: 'self', name: 'Self' }, ...doctors].filter(d =>
-    d.name.toLowerCase().includes(value.toLowerCase())
-  );
+  const allOptions = [{ id: 'self', name: 'Self', hospital: undefined }, ...doctors];
+  const filtered = allOptions.filter(d => d.name.toLowerCase().includes(inputVal.toLowerCase()));
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <div className="row" style={{ position: 'relative' }}>
+      <div style={{ position: 'relative' }}>
         <input
           className="input"
           placeholder="Doctor name or Self"
-          value={value}
-          onChange={e => { onChange(e.target.value); setOpen(true); }}
+          value={inputVal}
+          onChange={e => { setInputVal(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           style={{ paddingRight: 32 }}
         />
@@ -356,15 +394,23 @@ function ReferredByInput({ value, onChange }: { value: string; onChange: (v: str
       </div>
       {open && filtered.length > 0 && (
         <div style={{ position: 'absolute', zIndex: 100, top: '100%', left: 0, right: 0, marginTop: 4, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.08)', maxHeight: 200, overflowY: 'auto' }}>
-          {filtered.map(d => (
-            <div key={d.id} onMouseDown={() => { onChange(d.name); setOpen(false); }}
-              style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, fontWeight: d.id === 'self' ? 600 : 400 }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-            >
-              {d.name}{d.id !== 'self' && d.hospital ? ` (${d.hospital})` : ''}
-            </div>
-          ))}
+          {filtered.map(d => {
+            const displayLabel = d.id === 'self' ? 'Self' : d.hospital ? `${d.name} (${d.hospital})` : d.name;
+            return (
+              <div key={d.id}
+                onMouseDown={() => {
+                  setInputVal(displayLabel);
+                  onSelect(displayLabel, d.id === 'self' ? null : d.id);
+                  setOpen(false);
+                }}
+                style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, fontWeight: d.id === 'self' ? 600 : 400 }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                {displayLabel}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -372,8 +418,9 @@ function ReferredByInput({ value, onChange }: { value: string; onChange: (v: str
 }
 
 function ReportPreviewModal({ report, onClose, onEdit, onDownload }: { report: Report; onClose: () => void; onEdit: () => void; onDownload: () => void }) {
+  const referredBy = referredByLabel(report);
   return (
-    <Modal title={String(report.name || report.patient_name || '—')} subtitle={String(report.reg_no || report.regNo || '')} size="lg" icon="reports" onClose={onClose}
+    <Modal title={String(report.report_name || report.patient_name || '—')} subtitle={String(report.reg_no || report.regNo || '')} size="lg" icon="reports" onClose={onClose}
       footer={<><button className="btn" onClick={onClose}>Close</button><button className="btn" onClick={onDownload}><Icon name="download" size={13}/>Download</button><button className="btn primary" onClick={onEdit}><Icon name="edit" size={13}/>Edit</button></>}
     >
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20 }}>
@@ -382,14 +429,21 @@ function ReportPreviewModal({ report, onClose, onEdit, onDownload }: { report: R
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16, fontSize: 12 }}>
             <div><b>Patient:</b> {String(report.patient_name || report.patient || '—')}</div>
             <div><b>Age/Sex:</b> {String(report.age || '')}/{String(report.sex || '')}</div>
-            <div><b>Referred by:</b> {String(report.referred_by || report.referredBy || '—')}</div>
+            <div><b>Referred by:</b> {referredBy}</div>
             <div><b>Sample date:</b> {String((report.sample_date || report.sampleDate || '').toString().slice(0,10))}</div>
           </div>
           <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--navy)', marginBottom: 8 }}>{String(report.panel || report.investigation || '—')}</div>
           <div className="text-xs text-dim">Report file attached — download to view full results.</div>
         </div>
         <div className="col gap-12" style={{ fontSize: 12 }}>
-          {[['Reg No', report.reg_no || report.regNo],['Lab No', report.lab_no || report.labNo],['Patient', report.patient_name || report.patient],['Referred by', report.referred_by || report.referredBy],['Investigation', report.investigation],['Status', report.status]].map(([k,v]) => (
+          {[
+            ['Reg No', report.reg_no || report.regNo],
+            ['Lab No', report.lab_no || report.labNo],
+            ['Patient', report.patient_name || report.patient],
+            ['Referred by', referredBy],
+            ['Investigation', report.investigation],
+            ['Status', report.status],
+          ].map(([k,v]) => (
             <div key={String(k)} className="row between">
               <span style={{ color: 'var(--ink-4)' }}>{String(k ?? '')}</span>
               <span style={{ fontWeight: 500 }}>{String(v || '—')}</span>
